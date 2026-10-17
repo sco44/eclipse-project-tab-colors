@@ -18,7 +18,9 @@ import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
 import org.eclipse.ui.IPartListener2;
@@ -48,6 +50,7 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
 
     private Canvas canvas;
     private Point preferredSize;
+    private boolean geometryLogged;
     private IPartService partService;
     private IProject current;
     private RGB currentRgb;
@@ -167,7 +170,7 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
             return;
         }
         GC gc = event.gc;
-        Rectangle area = canvas.getClientArea();
+        Rectangle area = visibleArea();
         RGB background = canvas.getBackground().getRGB();
         int x = PADDING;
         gc.setBackground(new Color(ColorContrast.readable(currentRgb, background, ColorContrast.LINE)));
@@ -177,6 +180,28 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
         Point extent = gc.textExtent(text);
         gc.setForeground(new Color(ColorContrast.readable(currentRgb, background, ColorContrast.TEXT)));
         gc.drawText(text, x, area.y + (area.height - extent.y) / 2, true);
+        if (Platform.inDebugMode() && !geometryLogged) {
+            geometryLogged = true;
+            LOG.info("Project Tab Colors status bar: bounds=" + canvas.getBounds() + " client="
+                    + canvas.getClientArea() + " visible=" + area + " text=" + extent);
+        }
+    }
+
+    /**
+     * The part of the canvas not clipped by any ancestor. The status trim can place
+     * the control taller or lower than the strip that is actually shown, so content is
+     * centered in what is visible rather than in the canvas.
+     */
+    private Rectangle visibleArea() {
+        Rectangle visible = canvas.getClientArea();
+        Display display = canvas.getDisplay();
+        for (Composite ancestor = canvas.getParent(); ancestor != null; ancestor = ancestor.getParent()) {
+            visible = visible.intersection(display.map(ancestor, canvas, ancestor.getClientArea()));
+            if (ancestor instanceof Shell) {
+                break;
+            }
+        }
+        return visible.isEmpty() ? canvas.getClientArea() : visible;
     }
 
     private void reveal(Event event) {
@@ -206,7 +231,7 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
             for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
                 textWidth = Math.max(textWidth, gc.textExtent(truncate(project.getName())).x);
             }
-            int height = Math.max(SWATCH, gc.getFontMetrics().getHeight()) + 2;
+            int height = Math.max(SWATCH, gc.textExtent("Ag").y);
             return new Point(PADDING + SWATCH + GAP + textWidth + PADDING, height);
         } finally {
             gc.dispose();
