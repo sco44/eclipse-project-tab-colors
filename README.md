@@ -92,6 +92,10 @@ Start Eclipse with `-debug` and open **Window > Show View > Error Log**. The plu
 
 Without `-debug` the plug-in logs only errors.
 
+## License
+
+Copyright (c) 2026 sco44. Licensed under the [Eclipse Public License 2.0](LICENSE) (`SPDX-License-Identifier: EPL-2.0`).
+
 ## Implementation notes
 
 - **Internal API.** The code uses no `org.eclipse.ui.internal` API (`grep -r "ui.internal" it.sco.tabcolors/src` finds nothing). All SWT and E4-model access to tabs is in `TabPainter`; the status bar code is in `ActiveProjectStatusControl`.
