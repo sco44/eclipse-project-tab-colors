@@ -104,6 +104,8 @@ final class TabPainter {
     private static long profileLookup;
     private static long profileResolve;
     private static long profileApply;
+    private static long profileContrast;
+    private static long profileNotify;
     /** Tab of the editor that has focus: full-strength color. UI thread only. */
     private static CTabItem activeItem;
     /** Last seen editor tab background, used by the explorer decorator off the UI thread. */
@@ -250,8 +252,10 @@ final class TabPainter {
 
     /** Debug statistics of startup painting, see {@link TabColorStartup}. */
     static String profile() {
-        return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms; %d inputs restored",
-                profileLookup / 1e6, profileResolve / 1e6, profileApply / 1e6, inputsRestored);
+        return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms (contrast %.1f, notify %.1f,"
+                + " widgets %.1f); %d inputs restored", profileLookup / 1e6, profileResolve / 1e6,
+                profileApply / 1e6, profileContrast / 1e6, profileNotify / 1e6,
+                (profileApply - profileContrast - profileNotify) / 1e6, inputsRestored);
     }
 
     /** Marks the focused editor at startup, before any activation event. */
@@ -342,11 +346,15 @@ final class TabPainter {
         setThemeBackground(rgbOf(color));
     }
 
-    /** Records the theme background; the explorer decorator refreshes its labels if it changed. */
+    /**
+     * Records the theme background; the explorer decorator refreshes its labels if it
+     * changed. The refresh updates explorer viewers, so it runs after the current paint
+     * (e.g. the startup hookup) instead of inside it.
+     */
     private static void setThemeBackground(RGB background) {
         if (background != null && !background.equals(themeBackground)) {
             themeBackground = background;
-            ProjectColorDecorator.backgroundChanged(background);
+            asyncExec(() -> ProjectColorDecorator.backgroundChanged(background));
         }
     }
 
@@ -396,13 +404,18 @@ final class TabPainter {
         if (selectionBackground == null) {
             selectionBackground = background;
         }
+        long t0 = System.nanoTime();
         setThemeBackground(background);
         rememberBackgrounds(background, selectionBackground);
+        long t1 = System.nanoTime();
         boolean focused = item == activeItem;
         RGB text = shade(rgb, background, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);
         RGB selectedText = shade(rgb, selectionBackground, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);
         RGB line = shade(rgb, item == folder.getSelection() ? selectionBackground : background, focused,
                 ColorContrast.LINE, SOFT_LINE_FLOOR);
+        long t2 = System.nanoTime();
+        profileNotify += t1 - t0;
+        profileContrast += t2 - t1;
         hookFolder(folder);
 
         // CTabItem compares colors by identity, so skip redundant sets to avoid redraws.
