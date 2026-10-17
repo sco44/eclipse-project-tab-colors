@@ -9,17 +9,16 @@ import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.PaintEvent;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.GC;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.RGB;
-import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Event;
-import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Listener;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
 import org.eclipse.ui.IPartListener2;
@@ -44,10 +43,11 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
     private static final String PROJECT_EXPLORER = "org.eclipse.ui.navigator.ProjectExplorer";
     private static final int MAX_CHARS = 30;
     private static final int SWATCH = 12;
+    private static final int GAP = 5;
+    private static final int PADDING = 4;
 
-    private Composite root;
-    private Canvas swatch;
-    private Label label;
+    private Canvas canvas;
+    private Point preferredSize;
     private IPartService partService;
     private IProject current;
     private RGB currentRgb;
@@ -93,36 +93,20 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
 
     @Override
     protected Control createControl(Composite parent) {
-        root = new Composite(parent, SWT.NONE);
-        GridLayout layout = new GridLayout(2, false);
-        layout.marginHeight = 0;
-        layout.marginWidth = 4;
-        layout.horizontalSpacing = 5;
-        root.setLayout(layout);
-
-        swatch = new Canvas(root, SWT.NONE);
-        GridData swatchData = new GridData(SWT.CENTER, SWT.CENTER, false, true);
-        swatchData.widthHint = SWATCH;
-        swatchData.heightHint = SWATCH;
-        swatch.setLayoutData(swatchData);
-        swatch.addPaintListener(e -> {
-            if (currentRgb != null) {
-                e.gc.setBackground(new Color(currentRgb));
-                e.gc.fillRectangle(0, 0, SWATCH, SWATCH);
+        // One self-drawn canvas: a Label is not reliably styled by the CSS theme in the
+        // trim (dark text on a dark status bar), and the trim may give less height than
+        // asked, so everything is drawn vertically centered in the space we get.
+        canvas = new Canvas(parent, SWT.NONE) {
+            @Override
+            public Point computeSize(int widthHint, int heightHint, boolean changed) {
+                return preferredSize;
             }
-        });
-
-        label = new Label(root, SWT.NONE);
-        GridData labelData = new GridData(SWT.FILL, SWT.CENTER, true, true);
-        labelData.widthHint = labelWidth();
-        label.setLayoutData(labelData);
-
-        Listener reveal = this::reveal;
-        for (Control control : new Control[] { root, swatch, label }) {
-            control.addListener(SWT.MouseUp, reveal);
-            control.setCursor(control.getDisplay().getSystemCursor(SWT.CURSOR_HAND));
-        }
-        root.addDisposeListener(e -> unhook());
+        };
+        preferredSize = preferredSize();
+        canvas.addPaintListener(this::paint);
+        canvas.addListener(SWT.MouseUp, this::reveal);
+        canvas.setCursor(canvas.getDisplay().getSystemCursor(SWT.CURSOR_HAND));
+        canvas.addDisposeListener(e -> unhook());
 
         IWorkbenchWindow window = getWorkbenchWindow();
         if (window != null) {
@@ -131,7 +115,7 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
         }
         ProjectColorStore.get().addListener(storeListener);
         refreshFromActiveEditor();
-        return root;
+        return canvas;
     }
 
     @Override
@@ -166,21 +150,33 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
     }
 
     private void show(IProject project) {
-        if (label == null || label.isDisposed()) {
+        if (canvas == null || canvas.isDisposed()) {
             return;
         }
         RGB rgb = ProjectColorStore.get().colorOf(project);
         current = rgb == null ? null : project; // closed/missing projects show nothing
-        currentRgb = rgb == null ? null
-                : ColorContrast.readable(rgb, root.getBackground().getRGB(), ColorContrast.LINE);
-        String name = current == null ? "" : current.getName();
-        label.setText(truncate(name));
-        String tooltip = current == null ? null : name + " (click to show in Project Explorer)";
-        root.setToolTipText(tooltip);
-        swatch.setToolTipText(tooltip);
-        label.setToolTipText(tooltip);
-        swatch.setVisible(current != null);
-        swatch.redraw();
+        currentRgb = rgb;
+        canvas.setToolTipText(current == null ? null
+                : current.getName() + " (click to show in Project Explorer)");
+        canvas.redraw();
+    }
+
+    /** Swatch and name in the project color, adjusted for contrast against the actual background. */
+    private void paint(PaintEvent event) {
+        if (current == null || currentRgb == null) {
+            return;
+        }
+        GC gc = event.gc;
+        Rectangle area = canvas.getClientArea();
+        RGB background = canvas.getBackground().getRGB();
+        int x = PADDING;
+        gc.setBackground(new Color(ColorContrast.readable(currentRgb, background, ColorContrast.LINE)));
+        gc.fillRectangle(x, area.y + (area.height - SWATCH) / 2, SWATCH, SWATCH);
+        x += SWATCH + GAP;
+        String text = truncate(current.getName());
+        Point extent = gc.textExtent(text);
+        gc.setForeground(new Color(ColorContrast.readable(currentRgb, background, ColorContrast.TEXT)));
+        gc.drawText(text, x, area.y + (area.height - extent.y) / 2, true);
     }
 
     private void reveal(Event event) {
@@ -203,14 +199,15 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
     }
 
     /** Wide enough for the longest project name in the workspace, capped at {@value #MAX_CHARS} chars. */
-    private int labelWidth() {
-        GC gc = new GC(label);
+    private Point preferredSize() {
+        GC gc = new GC(canvas);
         try {
-            int width = gc.textExtent("MMMMMMMM").x;
+            int textWidth = gc.textExtent("MMMMMMMM").x;
             for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
-                width = Math.max(width, gc.textExtent(truncate(project.getName())).x);
+                textWidth = Math.max(textWidth, gc.textExtent(truncate(project.getName())).x);
             }
-            return width + 4;
+            int height = Math.max(SWATCH, gc.getFontMetrics().getHeight()) + 2;
+            return new Point(PADDING + SWATCH + GAP + textWidth + PADDING, height);
         } finally {
             gc.dispose();
         }
@@ -221,12 +218,12 @@ public class ActiveProjectStatusControl extends WorkbenchWindowControlContributi
     }
 
     private void asyncExec(Runnable runnable) {
-        if (root == null || root.isDisposed()) {
+        if (canvas == null || canvas.isDisposed()) {
             return;
         }
-        root.getDisplay().asyncExec(() -> {
+        canvas.getDisplay().asyncExec(() -> {
             try {
-                if (!root.isDisposed()) {
+                if (!canvas.isDisposed()) {
                     runnable.run();
                 }
             } catch (RuntimeException e) {
