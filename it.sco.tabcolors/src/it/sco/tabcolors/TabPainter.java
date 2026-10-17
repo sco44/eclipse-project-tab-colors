@@ -453,24 +453,55 @@ final class TabPainter {
     }
 
     /**
-     * An unrestored editor's reference takes its name and tooltip from its MPart, so a
-     * part with the same label and tooltip is that editor's part. Two parts can only
-     * tie if they show the same file, which means the same project and color.
+     * An unrestored editor's reference takes its name and tooltip from its MPart
+     * ({@code getPartName()} is the part's localized label; {@code getTitleToolTip()}
+     * is the part's tooltip override, else its localized tooltip). So the part with
+     * the same label is that editor's part; the tooltip only breaks ties between
+     * same-named files. A remaining tie means the same file, so the same project and color.
      */
     private static MPart matchUnrestored(IEditorReference ref, List<MPart> parts, Collection<MPart> taken) {
         String label = ref.getPartName();
-        String tooltip = Objects.requireNonNullElse(ref.getTitleToolTip(), "");
         if (label == null || label.isEmpty()) {
             return null;
         }
+        List<MPart> sameLabel = new ArrayList<>();
         for (MPart part : parts) {
-            if (!taken.contains(part) && label.equals(part.getLocalizedLabel())
-                    && tooltip.equals(Objects.requireNonNullElse(part.getLocalizedTooltip(), ""))) {
+            if (!taken.contains(part) && label.equals(part.getLocalizedLabel())) {
+                sameLabel.add(part);
+            }
+        }
+        if (sameLabel.size() == 1) {
+            return sameLabel.get(0);
+        }
+        String tooltip = Objects.requireNonNullElse(ref.getTitleToolTip(), "");
+        for (MPart part : sameLabel) {
+            if (tooltip.equals(tooltipOf(part))) {
                 return part;
             }
         }
-        debugOnce("No MPart matches unrestored editor '" + label + "' (" + tooltip + ")");
+        if (Platform.inDebugMode()) {
+            StringBuilder candidates = new StringBuilder();
+            for (MPart part : sameLabel) {
+                candidates.append(" [").append(tooltipOf(part)).append(']');
+            }
+            debugOnce("No MPart matches unrestored editor '" + label + "' (" + tooltip + "); searched "
+                    + parts.size() + " parts, same label:" + (sameLabel.isEmpty() ? " none" : candidates));
+        }
         return null;
+    }
+
+    /**
+     * The tooltip a part reference reports: override first, then the model tooltip.
+     * The key is {@code IPresentationEngine.OVERRIDE_TITLE_TOOL_TIP_KEY} (bundle
+     * {@code org.eclipse.e4.ui.workbench}, not in Require-Bundle), as read by
+     * {@code WorkbenchPartReference.getTitleToolTip()} in 4.36.
+     */
+    private static String tooltipOf(MPart part) {
+        if (part.getTransientData().get("e4_override_title_tool_tip_key") instanceof String override
+                && !override.isEmpty()) {
+            return override;
+        }
+        return Objects.requireNonNullElse(part.getLocalizedTooltip(), "");
     }
 
     /** All parts in a window's model, including detached windows and the shared editor area. */
