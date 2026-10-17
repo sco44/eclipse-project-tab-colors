@@ -110,7 +110,6 @@ final class TabPainter {
     private static long profileHooks;
     private static long profileBackgrounds;
     private static long profileSetters;
-    private static long profileRedraw;
     private static long profileApplyFirst;
     private static long profileApplyMax;
     private static int profileApplyCount;
@@ -266,12 +265,12 @@ final class TabPainter {
     /** Debug statistics of startup painting, see {@link TabColorStartup}. */
     static String profile() {
         return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms (first tab %.1f, slowest %.1f,"
-                + " rest avg %.2f; contrast %.1f, notify %.1f, folder hooks %.1f, backgrounds %.1f, setters %.1f,"
-                + " redraw %.1f); %d inputs restored", profileLookup / 1e6, profileResolve / 1e6,
+                + " rest avg %.2f; contrast %.1f, notify %.1f, folder hooks %.1f, backgrounds %.1f, setters %.1f);"
+                + " %d inputs restored", profileLookup / 1e6, profileResolve / 1e6,
                 profileApply / 1e6, profileApplyFirst / 1e6, profileApplyMax / 1e6,
                 profileApplyCount > 1 ? (profileApply - profileApplyFirst) / 1e6 / (profileApplyCount - 1) : 0.0,
                 profileContrast / 1e6, profileNotify / 1e6, profileHooks / 1e6, profileBackgrounds / 1e6,
-                profileSetters / 1e6, profileRedraw / 1e6, inputsRestored);
+                profileSetters / 1e6, inputsRestored);
     }
 
     /** Marks the focused editor at startup, before any activation event. */
@@ -409,9 +408,9 @@ final class TabPainter {
             if (item.getData(PROJECT_RGB) != null) {
                 item.setData(PROJECT_RGB, null);
                 item.setData(LINE_COLOR, null);
-                item.setForeground(null); // null restores the theme default
+                // null restores the theme default; the folder redraws the tabs (and our line) itself
+                item.setForeground(null);
                 item.setSelectionForeground(null);
-                redraw(item);
             }
             return;
         }
@@ -445,13 +444,13 @@ final class TabPainter {
         long ts = System.nanoTime();
         item.setData(PROJECT_RGB, rgb);
         item.setData(LINE_COLOR, line);
-        // device-less Colors: no OS resource, no dispose needed
+        // Device-less Colors: no OS resource, no dispose needed. Each setter queues one
+        // deferred redraw of the folder's tabs (our line included), shared by all items.
+        // Never call CTabItem.getBounds() here: it flushes that update synchronously
+        // (CTabFolder.runUpdate: full tab layout), which cost ~2.5 ms per tab at startup.
         item.setForeground(new Color(text));
         item.setSelectionForeground(new Color(selectedText));
-        long tr = System.nanoTime();
-        redraw(item);
-        profileSetters += tr - ts;
-        profileRedraw += System.nanoTime() - tr;
+        profileSetters += System.nanoTime() - ts;
     }
 
     private static RGB shade(RGB rgb, RGB background, boolean focused, double min, double softFloor) {
@@ -632,13 +631,6 @@ final class TabPainter {
             }
         }
         return null;
-    }
-
-    private static void redraw(CTabItem item) {
-        if (item != null && !item.isDisposed() && item.isShowing()) {
-            Rectangle b = item.getBounds();
-            item.getParent().redraw(b.x, b.y, b.width, b.height, false);
-        }
     }
 
     private static RGB rgbOf(Color color) {
