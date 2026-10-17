@@ -35,9 +35,9 @@ import org.eclipse.ui.PlatformUI;
 final class TabPainter {
 
     /**
-     * Value of {@code AbstractPartRenderer.OWNING_ME} (package
-     * {@code org.eclipse.e4.ui.internal.workbench.swt}, verified with javap on the
-     * 2023-12 bundle). Hard-coded so no internal package is referenced from source;
+     * Value of {@code AbstractPartRenderer.OWNING_ME}, which lives in a non-API package
+     * of bundle {@code org.eclipse.e4.ui.workbench.swt} (verified with javap on the
+     * 2023-12 bundle). Hard-coded so no non-API package is referenced from source;
      * javac would inline the constant anyway.
      */
     private static final String OWNING_ME = "modelElement";
