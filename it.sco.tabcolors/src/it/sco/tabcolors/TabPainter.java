@@ -108,6 +108,12 @@ final class TabPainter {
     private static long profileContrast;
     private static long profileNotify;
     private static long profileHooks;
+    private static long profileBackgrounds;
+    private static long profileSetters;
+    private static long profileRedraw;
+    private static long profileApplyFirst;
+    private static long profileApplyMax;
+    private static int profileApplyCount;
     /** Tab of the editor that has focus: full-strength color. UI thread only. */
     private static CTabItem activeItem;
     /** Last seen editor tab background, used by the explorer decorator off the UI thread. */
@@ -210,8 +216,13 @@ final class TabPainter {
         RGB rgb = colorOf(part, ref);
         long resolved = System.nanoTime();
         apply(item, rgb);
+        long applied = System.nanoTime() - resolved;
         profileResolve += resolved - start;
-        profileApply += System.nanoTime() - resolved;
+        profileApply += applied;
+        if (profileApplyCount++ == 0) {
+            profileApplyFirst = applied;
+        }
+        profileApplyMax = Math.max(profileApplyMax, applied);
     }
 
     private static RGB colorOf(MPart part, IEditorReference ref) {
@@ -254,11 +265,13 @@ final class TabPainter {
 
     /** Debug statistics of startup painting, see {@link TabColorStartup}. */
     static String profile() {
-        return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms (contrast %.1f, notify %.1f,"
-                + " folder hooks %.1f, widgets %.1f); %d inputs restored", profileLookup / 1e6,
-                profileResolve / 1e6, profileApply / 1e6, profileContrast / 1e6, profileNotify / 1e6,
-                profileHooks / 1e6, (profileApply - profileContrast - profileNotify - profileHooks) / 1e6,
-                inputsRestored);
+        return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms (first tab %.1f, slowest %.1f,"
+                + " rest avg %.2f; contrast %.1f, notify %.1f, folder hooks %.1f, backgrounds %.1f, setters %.1f,"
+                + " redraw %.1f); %d inputs restored", profileLookup / 1e6, profileResolve / 1e6,
+                profileApply / 1e6, profileApplyFirst / 1e6, profileApplyMax / 1e6,
+                profileApplyCount > 1 ? (profileApply - profileApplyFirst) / 1e6 / (profileApplyCount - 1) : 0.0,
+                profileContrast / 1e6, profileNotify / 1e6, profileHooks / 1e6, profileBackgrounds / 1e6,
+                profileSetters / 1e6, profileRedraw / 1e6, inputsRestored);
     }
 
     /** Marks the focused editor at startup, before any activation event. */
@@ -402,12 +415,14 @@ final class TabPainter {
             }
             return;
         }
+        long tb = System.nanoTime();
         RGB background = rgbOf(folder.getBackground());
         RGB selectionBackground = rgbOf(folder.getSelectionBackground());
         if (selectionBackground == null) {
             selectionBackground = background;
         }
         long t0 = System.nanoTime();
+        profileBackgrounds += t0 - tb;
         setThemeBackground(background);
         rememberBackgrounds(background, selectionBackground);
         long t1 = System.nanoTime();
@@ -427,12 +442,16 @@ final class TabPainter {
                 && line.equals(item.getData(LINE_COLOR))) {
             return;
         }
+        long ts = System.nanoTime();
         item.setData(PROJECT_RGB, rgb);
         item.setData(LINE_COLOR, line);
         // device-less Colors: no OS resource, no dispose needed
         item.setForeground(new Color(text));
         item.setSelectionForeground(new Color(selectedText));
+        long tr = System.nanoTime();
         redraw(item);
+        profileSetters += tr - ts;
+        profileRedraw += System.nanoTime() - tr;
     }
 
     private static RGB shade(RGB rgb, RGB background, boolean focused, double min, double softFloor) {
