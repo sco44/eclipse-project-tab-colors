@@ -6,7 +6,7 @@
   <parent>
     <groupId>it.sco.tabcolors</groupId>
     <artifactId>project-tab-colors</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
   </parent>
   <artifactId>it.sco.tabcolors.tests</artifactId>
   <packaging>eclipse-test-plugin</packaging>

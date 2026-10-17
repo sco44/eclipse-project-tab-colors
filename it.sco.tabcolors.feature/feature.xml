@@ -2,7 +2,7 @@
 <feature
       id="it.sco.tabcolors.feature"
       label="Project Tab Colors"
-      version="1.0.0.qualifier"
+      version="1.0.0"
       provider-name="sco">
 
    <description>

@@ -21,7 +21,7 @@ The plug-in is built against the 2023-12 release. It has been tested on Eclipse 
 ## Install
 
 1. Build it (see [Build](#build)), or use a built update-site zip.
-2. In Eclipse, choose **Help > Install New Software... > Add... > Archive...**, select `it.sco.tabcolors.site/target/it.sco.tabcolors.site-1.0.0-SNAPSHOT.zip`, and install **Project Tab Colors**.
+2. In Eclipse, choose **Help > Install New Software... > Add... > Archive...**, select `it.sco.tabcolors.site/target/it.sco.tabcolors.site-<version>.zip`, and install **Project Tab Colors**.
 3. Restart Eclipse.
 4. In **Preferences > General > Startup and Shutdown**, make sure **Project Tab Colors** is ticked.
 
@@ -62,7 +62,7 @@ Outputs:
 | Path | What |
 |---|---|
 | `it.sco.tabcolors.site/target/repository/` | p2 update site |
-| `it.sco.tabcolors.site/target/it.sco.tabcolors.site-1.0.0-SNAPSHOT.zip` | Zipped update site for **Install New Software > Archive** |
+| `it.sco.tabcolors.site/target/it.sco.tabcolors.site-<version>.zip` | Zipped update site for **Install New Software > Archive** |
 | `it.sco.tabcolors.site/target/repository/plugins/it.sco.tabcolors_*.jar` | Plug-in jar for `dropins/` |
 
 Modules:
