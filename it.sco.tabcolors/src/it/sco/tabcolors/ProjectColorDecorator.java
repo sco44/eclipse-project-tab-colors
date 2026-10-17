@@ -3,6 +3,7 @@ package it.sco.tabcolors;
 import java.util.function.Consumer;
 
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
@@ -31,7 +32,11 @@ public class ProjectColorDecorator extends BaseLabelProvider implements ILightwe
     @Override
     public void decorate(Object element, IDecoration decoration) {
         try {
-            IProject project = Adapters.adapt(element, IProject.class);
+            // Adapt to IResource, not IProject: an adapter mapping children to their
+            // project must not color the children.
+            if (!(Adapters.adapt(element, IResource.class) instanceof IProject project)) {
+                return;
+            }
             RGB rgb = ProjectColorStore.get().colorOf(project); // null if closed
             if (rgb != null) {
                 decoration.setForegroundColor(new Color(rgb));

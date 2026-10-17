@@ -137,7 +137,14 @@ final class TabPainter {
 
     private static MPart modelPart(IEditorReference ref) {
         IEditorPart editor = ref.getEditor(false);
-        return editor == null ? null : editor.getSite().getService(MPart.class);
+        if (editor == null) {
+            return null; // unrestored: colored once it becomes visible
+        }
+        MPart part = editor.getSite().getService(MPart.class);
+        if (part == null) {
+            debugOnce("No MPart from site of restored editor " + ref.getId());
+        }
+        return part;
     }
 
     private static CTabItem tabItem(MPart part) {
@@ -155,7 +162,25 @@ final class TabPainter {
                 return item;
             }
         }
+        if (Platform.inDebugMode()) {
+            StringBuilder owners = new StringBuilder();
+            for (CTabItem item : folder.getItems()) {
+                Object owner = item.getData(OWNING_ME);
+                owners.append(owner == null ? "null" : owner.getClass().getName()).append(' ');
+            }
+            debugOnce("No CTabItem owned by " + part.getClass().getName() + " (" + part.getLabel()
+                    + "); item owners: " + owners);
+        }
         return null;
+    }
+
+    private static final AtomicBoolean debugLogged = new AtomicBoolean();
+
+    /** Diagnostics for the unverified E4 assumptions; only with {@code -debug}, logged once. */
+    private static void debugOnce(String message) {
+        if (Platform.inDebugMode() && debugLogged.compareAndSet(false, true)) {
+            LOG.info("Project Tab Colors diagnostics: " + message);
+        }
     }
 
     private static void asyncExec(Runnable runnable) {

@@ -50,7 +50,8 @@
                lightweight="true" adaptable="true" state="true"
                class="it.sco.tabcolors.ProjectColorDecorator">
       <description>Shows project names in their editor tab color.</description>
-      <enablement><objectClass name="org.eclipse.core.resources.IProject"/></enablement>
+      <!-- IResource, not IProject: decorate() then colors only elements that are projects -->
+      <enablement><objectClass name="org.eclipse.core.resources.IResource"/></enablement>
     </decorator>
   </extension>
 </plugin>
