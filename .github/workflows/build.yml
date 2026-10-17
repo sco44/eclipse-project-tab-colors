@@ -1,0 +1,64 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Also caches the Eclipse target platform, which Tycho stores under ~/.m2/repository/p2.
+          cache: maven
+
+      - name: Build and test
+        run: ./mvnw -B -ntp clean verify
+
+      - name: Upload update site
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-tab-colors-update-site
+          path: |
+            it.sco.tabcolors.site/target/*.zip
+            it.sco.tabcolors.site/target/repository/plugins/it.sco.tabcolors_*.jar
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: it.sco.tabcolors.tests/target/surefire-reports/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: project-tab-colors-update-site
+          path: dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/**/*.zip
+            dist/**/*.jar
+          generate_release_notes: true

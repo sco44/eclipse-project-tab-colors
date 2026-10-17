@@ -74,6 +74,14 @@ Modules:
 | `it.sco.tabcolors.feature` | eclipse-feature | Feature for installation |
 | `it.sco.tabcolors.site` | eclipse-repository | Update site |
 
+## Continuous integration
+
+GitHub Actions (`.github/workflows/build.yml`) runs `./mvnw clean verify` on every push and pull request, on Linux with JDK 21.
+
+- **Download a build:** open the workflow run in the **Actions** tab. The update-site zip and the plug-in jar are under the run's artifacts as `project-tab-colors-update-site`.
+- **When tests fail:** the surefire reports are uploaded as `test-reports`.
+- **Release:** pushing a tag that starts with `v` (for example `git tag v1.0.0 && git push origin v1.0.0`) creates a GitHub Release with the zip and jar attached.
+
 ## Diagnostics
 
 Start Eclipse with `-debug` and open **Window > Show View > Error Log**. The plug-in then writes INFO entries from `it.sco.tabcolors`:
