@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="it.sco.tabcolors.feature"
+      label="Project Tab Colors"
+      version="1.0.0.qualifier"
+      provider-name="sco">
+
+   <description>
+      Colors each editor tab by the project its file belongs to.
+   </description>
+
+   <plugin
+         id="it.sco.tabcolors"
+         version="0.0.0"/>
+
+</feature>

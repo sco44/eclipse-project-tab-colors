@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature id="it.sco.tabcolors.feature" version="0.0.0">
+      <category name="it.sco.tabcolors.category"/>
+   </feature>
+   <category-def name="it.sco.tabcolors.category" label="Project Tab Colors"/>
+</site>
