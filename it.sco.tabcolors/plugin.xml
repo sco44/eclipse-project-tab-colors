@@ -4,4 +4,53 @@
   <extension point="org.eclipse.ui.startup">
     <startup class="it.sco.tabcolors.TabColorStartup"/>
   </extension>
+
+  <extension point="org.eclipse.ui.commands">
+    <category id="it.sco.tabcolors.category" name="Project Tab Colors"/>
+    <command id="it.sco.tabcolors.setColor" categoryId="it.sco.tabcolors.category" name="Tab Color..."/>
+    <command id="it.sco.tabcolors.resetColor" categoryId="it.sco.tabcolors.category" name="Reset Tab Color"/>
+  </extension>
+
+  <extension point="org.eclipse.ui.handlers">
+    <handler commandId="it.sco.tabcolors.setColor" class="it.sco.tabcolors.SetTabColorHandler"/>
+    <handler commandId="it.sco.tabcolors.resetColor" class="it.sco.tabcolors.ResetTabColorHandler"/>
+  </extension>
+
+  <extension point="org.eclipse.ui.menus">
+    <!-- F2 on resources in Project Explorer -->
+    <menuContribution locationURI="popup:org.eclipse.ui.navigator.ProjectExplorer#PopupMenu?after=additions">
+      <menu id="it.sco.tabcolors.menu.projectExplorer" label="Project Tab Colors">
+        <command commandId="it.sco.tabcolors.setColor"/>
+        <command commandId="it.sco.tabcolors.resetColor"/>
+        <visibleWhen checkEnabled="false">
+          <with variable="selection">
+            <count value="1"/>
+            <iterate><adapt type="org.eclipse.core.resources.IResource"/></iterate>
+          </with>
+        </visibleWhen>
+      </menu>
+    </menuContribution>
+    <!-- Same menu in Package Explorer (ignored when JDT is not installed) -->
+    <menuContribution locationURI="popup:org.eclipse.jdt.ui.PackageExplorer?after=additions">
+      <menu id="it.sco.tabcolors.menu.packageExplorer" label="Project Tab Colors">
+        <command commandId="it.sco.tabcolors.setColor"/>
+        <command commandId="it.sco.tabcolors.resetColor"/>
+        <visibleWhen checkEnabled="false">
+          <with variable="selection">
+            <count value="1"/>
+            <iterate><adapt type="org.eclipse.core.resources.IResource"/></iterate>
+          </with>
+        </visibleWhen>
+      </menu>
+    </menuContribution>
+  </extension>
+
+  <extension point="org.eclipse.ui.decorators">
+    <decorator id="it.sco.tabcolors.projectDecorator" label="Project Tab Colors"
+               lightweight="true" adaptable="true" state="true"
+               class="it.sco.tabcolors.ProjectColorDecorator">
+      <description>Shows project names in their editor tab color.</description>
+      <enablement><objectClass name="org.eclipse.core.resources.IProject"/></enablement>
+    </decorator>
+  </extension>
 </plugin>

@@ -5,14 +5,19 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
+import org.eclipse.jface.viewers.ISelection;
+import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
 import org.eclipse.ui.IFileEditorInput;
+import org.eclipse.ui.ISources;
 import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
- * Resolves the project an editor's input belongs to, without restoring editors.
+ * Resolves the project an editor's input (or a selection) belongs to, without
+ * restoring editors.
  */
 public final class EditorProjects {
 
@@ -45,6 +50,24 @@ public final class EditorProjects {
     /** Project of a restored editor's input, or {@code null}. */
     public static IProject projectOf(IEditorPart editor) {
         return editor == null ? null : projectOf(editor.getEditorInput());
+    }
+
+    /**
+     * Project of a selection holding exactly one element that adapts to
+     * {@link IResource} (projects, files, Java elements, ...), or {@code null}.
+     */
+    public static IProject projectOf(ISelection selection) {
+        if (!(selection instanceof IStructuredSelection structured) || structured.size() != 1) {
+            return null;
+        }
+        IResource resource = Adapters.adapt(structured.getFirstElement(), IResource.class);
+        return resource == null ? null : resource.getProject();
+    }
+
+    /** Project of the current selection in a handler evaluation context, or {@code null}. */
+    public static IProject selectedProject(Object evaluationContext) {
+        Object selection = HandlerUtil.getVariable(evaluationContext, ISources.ACTIVE_CURRENT_SELECTION_NAME);
+        return selection instanceof ISelection s ? projectOf(s) : null;
     }
 
     /** Project of an editor input, or {@code null}. */
