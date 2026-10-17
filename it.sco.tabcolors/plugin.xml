@@ -59,6 +59,12 @@
       <command commandId="it.sco.tabcolors.closeProjectEditors"/>
       <command commandId="it.sco.tabcolors.closeOtherProjectsEditors"/>
     </menuContribution>
+    <!-- F6 -->
+    <menuContribution locationURI="toolbar:org.eclipse.ui.trim.status">
+      <toolbar id="it.sco.tabcolors.statusToolbar">
+        <control id="it.sco.tabcolors.activeProject" class="it.sco.tabcolors.ActiveProjectStatusControl"/>
+      </toolbar>
+    </menuContribution>
   </extension>
 
   <!-- F5 keys. Checked against the 2025-06 install: no conflicts on Windows/Linux
