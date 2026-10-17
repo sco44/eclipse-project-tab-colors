@@ -49,6 +49,41 @@ final class ColorContrast {
         return fromHsl(hsl[0], hsl[1], (float) ok);
     }
 
+    /**
+     * A softer variant for tabs without focus: the {@link #readable} color blended
+     * {@code fraction} of the way toward the background (lighter on light themes),
+     * but never below {@code floor} contrast.
+     */
+    static RGB soften(RGB color, RGB background, double minContrast, double fraction, double floor) {
+        RGB base = readable(color, background, minContrast);
+        if (base == null || background == null) {
+            return base;
+        }
+        RGB blended = mix(base, background, fraction);
+        if (contrast(blended, background) >= floor) {
+            return blended;
+        }
+        // Contrast falls monotonically while mixing toward the background: find the furthest mix.
+        double ok = 0;
+        double bad = fraction;
+        for (int i = 0; i < 16; i++) {
+            double mid = (ok + bad) / 2;
+            if (contrast(mix(base, background, mid), background) >= floor) {
+                ok = mid;
+            } else {
+                bad = mid;
+            }
+        }
+        return mix(base, background, ok);
+    }
+
+    /** Linear blend from {@code a} (t = 0) to {@code b} (t = 1). */
+    static RGB mix(RGB a, RGB b, double t) {
+        return new RGB((int) Math.round(a.red + (b.red - a.red) * t),
+                (int) Math.round(a.green + (b.green - a.green) * t),
+                (int) Math.round(a.blue + (b.blue - a.blue) * t));
+    }
+
     /** WCAG 2 contrast ratio, 1 to 21. */
     static double contrast(RGB a, RGB b) {
         double la = luminance(a);

@@ -79,6 +79,30 @@ class ColorContrastTest {
     }
 
     @Test
+    void softenedColorIsLighterOnLightTheme() {
+        RGB color = new RGB(0xC0, 0x30, 0x30);
+        RGB focused = ColorContrast.readable(color, LIGHT_TAB, ColorContrast.TEXT);
+        RGB unfocused = ColorContrast.soften(color, LIGHT_TAB, ColorContrast.TEXT, 0.3, 3.0);
+
+        assertTrue(ColorContrast.luminance(unfocused) > ColorContrast.luminance(focused), "lighter");
+        assertTrue(ColorContrast.contrast(unfocused, LIGHT_TAB) >= 3.0, "still readable");
+    }
+
+    @Test
+    void softenRespectsFloor() {
+        RGB color = new RGB(0x80, 0x80, 0x20);
+        RGB unfocused = ColorContrast.soften(color, LIGHT_TAB, ColorContrast.TEXT, 1.0, 3.0);
+        assertEquals(3.0, ColorContrast.contrast(unfocused, LIGHT_TAB), 0.15);
+    }
+
+    @Test
+    void mixBlendsLinearly() {
+        assertEquals(BLACK, ColorContrast.mix(BLACK, WHITE, 0));
+        assertEquals(WHITE, ColorContrast.mix(BLACK, WHITE, 1));
+        assertEquals(new RGB(128, 128, 128), ColorContrast.mix(BLACK, WHITE, 0.5));
+    }
+
+    @Test
     void unreachableContrastGivesExtreme() {
         RGB midGray = new RGB(0x76, 0x76, 0x76);
         RGB adjusted = ColorContrast.readable(new RGB(0x80, 0x10, 0x10), midGray, 21);

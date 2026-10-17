@@ -24,7 +24,7 @@ public class TabColorStartup implements IStartup {
     private final IPageListener pageListener = new IPageListener() {
         @Override
         public void pageOpened(IWorkbenchPage page) {
-            safely(() -> TabPainter.repaintPage(page));
+            safely(() -> TabPainter.repaintWindow(page.getWorkbenchWindow()));
         }
 
         @Override
@@ -92,9 +92,7 @@ public class TabColorStartup implements IStartup {
     private void hookWindow(IWorkbenchWindow window) {
         window.getPartService().addPartListener(partListener);
         window.addPageListener(pageListener);
-        for (IWorkbenchPage page : window.getPages()) {
-            TabPainter.repaintPage(page);
-        }
+        TabPainter.repaintWindow(window);
     }
 
     private static void safely(Runnable runnable) {
