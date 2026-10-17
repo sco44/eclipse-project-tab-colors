@@ -27,7 +27,7 @@ import org.eclipse.e4.ui.model.application.ui.basic.MPart;
 import org.eclipse.e4.ui.model.application.ui.basic.MWindow;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CTabFolder;
-import org.eclipse.swt.custom.CTabFolder2Adapter;
+import org.eclipse.swt.custom.CTabFolder2Listener;
 import org.eclipse.swt.custom.CTabFolderEvent;
 import org.eclipse.swt.custom.CTabItem;
 import org.eclipse.swt.graphics.Color;
@@ -38,6 +38,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableItem;
@@ -106,6 +107,7 @@ final class TabPainter {
     private static long profileApply;
     private static long profileContrast;
     private static long profileNotify;
+    private static long profileHooks;
     /** Tab of the editor that has focus: full-strength color. UI thread only. */
     private static CTabItem activeItem;
     /** Last seen editor tab background, used by the explorer decorator off the UI thread. */
@@ -173,13 +175,13 @@ final class TabPainter {
             long start = System.nanoTime();
             Map<MPart, IEditorReference> parts = editorParts(window);
             profileLookup += System.nanoTime() - start;
-            parts.forEach((part, ref) -> {
+            for (Map.Entry<MPart, IEditorReference> entry : parts.entrySet()) {
                 try {
-                    paint(part, ref);
+                    paint(entry.getKey(), entry.getValue());
                 } catch (RuntimeException e) {
-                    LOG.error("Cannot color editor tab " + ref.getId(), e);
+                    LOG.error("Cannot color editor tab " + entry.getValue().getId(), e);
                 }
-            });
+            }
             return parts.size();
         } catch (RuntimeException e) {
             LOG.error("Cannot color editor tabs", e);
@@ -253,9 +255,10 @@ final class TabPainter {
     /** Debug statistics of startup painting, see {@link TabColorStartup}. */
     static String profile() {
         return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms (contrast %.1f, notify %.1f,"
-                + " widgets %.1f); %d inputs restored", profileLookup / 1e6, profileResolve / 1e6,
-                profileApply / 1e6, profileContrast / 1e6, profileNotify / 1e6,
-                (profileApply - profileContrast - profileNotify) / 1e6, inputsRestored);
+                + " folder hooks %.1f, widgets %.1f); %d inputs restored", profileLookup / 1e6,
+                profileResolve / 1e6, profileApply / 1e6, profileContrast / 1e6, profileNotify / 1e6,
+                profileHooks / 1e6, (profileApply - profileContrast - profileNotify - profileHooks) / 1e6,
+                inputsRestored);
     }
 
     /** Marks the focused editor at startup, before any activation event. */
@@ -460,22 +463,64 @@ final class TabPainter {
         if (folder.getData(HOOKED) != null) {
             return;
         }
+        long start = System.nanoTime();
         folder.setData(HOOKED, Boolean.TRUE);
         // Added after CTabFolder's own paint listener, so it draws on top of the theme.
-        folder.addListener(SWT.Paint, TabPainter::paintLines);
+        folder.addListener(SWT.Paint, FolderHooks.INSTANCE);
+        // Selecting another tab changes which background its line is adjusted against.
+        folder.addListener(SWT.Selection, FolderHooks.INSTANCE);
         // Added after the StackRenderer's listener, which opens the list synchronously.
-        folder.addCTabFolder2Listener(new CTabFolder2Adapter() {
-            @Override
-            public void showList(CTabFolderEvent event) {
+        folder.addCTabFolder2Listener(FolderHooks.INSTANCE);
+        profileHooks += System.nanoTime() - start;
+    }
+
+    /**
+     * The listeners of every editor tab folder, as one named class instead of lambdas and
+     * an anonymous adapter: the background warm-up loads it, so the UI thread pays for
+     * neither class loading nor lambda linkage while the workbench starts. Stateless.
+     */
+    static final class FolderHooks implements Listener, CTabFolder2Listener {
+
+        static final FolderHooks INSTANCE = new FolderHooks();
+
+        private FolderHooks() {
+        }
+
+        @Override
+        public void handleEvent(Event event) {
+            if (event.type == SWT.Paint) {
+                paintLines(event);
+            } else if (event.type == SWT.Selection && event.widget instanceof CTabFolder folder) {
+                asyncExec(() -> {
+                    for (CTabItem item : folder.getItems()) {
+                        reapply(item);
+                    }
+                });
+            }
+        }
+
+        @Override
+        public void showList(CTabFolderEvent event) {
+            if (event.widget instanceof CTabFolder folder) {
                 asyncExec(() -> colorPartLists(folder));
             }
-        });
-        // Selecting another tab changes which background its line is adjusted against.
-        folder.addListener(SWT.Selection, e -> asyncExec(() -> {
-            for (CTabItem item : folder.getItems()) {
-                reapply(item);
-            }
-        }));
+        }
+
+        @Override
+        public void close(CTabFolderEvent event) {
+        }
+
+        @Override
+        public void minimize(CTabFolderEvent event) {
+        }
+
+        @Override
+        public void maximize(CTabFolderEvent event) {
+        }
+
+        @Override
+        public void restore(CTabFolderEvent event) {
+        }
     }
 
     private static void paintLines(Event event) {

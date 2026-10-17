@@ -103,7 +103,8 @@ public class TabColorStartup implements IStartup {
     private void preloadClasses() {
         ClassLoader loader = getClass().getClassLoader();
         for (String name : new String[] { "it.sco.tabcolors.TabPainter", "it.sco.tabcolors.ColorContrast",
-                "it.sco.tabcolors.EditorProjects", "it.sco.tabcolors.ProjectColorDecorator" }) {
+                "it.sco.tabcolors.EditorProjects", "it.sco.tabcolors.ProjectColorDecorator",
+                "it.sco.tabcolors.TabPainter$FolderHooks" }) {
             try {
                 Class.forName(name, true, loader);
             } catch (ClassNotFoundException e) {
