@@ -2,6 +2,7 @@ package it.sco.tabcolors;
 
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IPageListener;
 import org.eclipse.ui.IStartup;
 import org.eclipse.ui.IWindowListener;
@@ -63,12 +64,18 @@ public class TabColorStartup implements IStartup {
     public void earlyStartup() {
         long start = System.nanoTime();
         IWorkbench workbench = PlatformUI.getWorkbench();
-        workbench.getDisplay().asyncExec(() -> {
+        Display display = workbench.getDisplay();
+        long scheduled = System.nanoTime();
+        display.asyncExec(() -> {
             long uiStart = System.nanoTime();
             safely(() -> hookWorkbench(workbench));
             if (Platform.inDebugMode()) {
-                LOG.info(String.format("Project Tab Colors startup: %.1f ms (earlyStartup) + %.1f ms (UI hookup)",
-                        (uiStart - start) / 1e6, (System.nanoTime() - uiStart) / 1e6));
+                // Our cost is earlyStartup's own work plus the UI hookup; the time in
+                // between is the UI thread finishing workbench startup, not ours.
+                LOG.info(String.format("Project Tab Colors startup cost: %.1f ms (earlyStartup %.1f ms"
+                        + " + UI hookup %.1f ms); waited %.0f ms for the UI thread",
+                        (scheduled - start + System.nanoTime() - uiStart) / 1e6, (scheduled - start) / 1e6,
+                        (System.nanoTime() - uiStart) / 1e6, (uiStart - scheduled) / 1e6));
             }
         });
     }
