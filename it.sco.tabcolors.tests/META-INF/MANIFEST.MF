@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Project Tab Colors Tests
+Bundle-SymbolicName: it.sco.tabcolors.tests
+Bundle-Version: 1.0.0.qualifier
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Automatic-Module-Name: it.sco.tabcolors.tests
+Fragment-Host: it.sco.tabcolors;bundle-version="1.0.0"
+Import-Package: org.junit.jupiter.api;version="[5.0.0,6.0.0)"

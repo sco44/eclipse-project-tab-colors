@@ -18,6 +18,7 @@
 
   <modules>
     <module>it.sco.tabcolors</module>
+    <module>it.sco.tabcolors.tests</module>
     <module>it.sco.tabcolors.feature</module>
     <module>it.sco.tabcolors.site</module>
   </modules>
