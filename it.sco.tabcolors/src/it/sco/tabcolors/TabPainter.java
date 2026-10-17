@@ -14,6 +14,9 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.core.runtime.preferences.IEclipsePreferences;
+import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.e4.core.services.events.IEventBroker;
 import org.eclipse.e4.ui.css.swt.theme.IThemeEngine;
 import org.eclipse.e4.ui.model.application.ui.MElementContainer;
@@ -45,6 +48,7 @@ import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
+import org.osgi.service.prefs.BackingStoreException;
 
 /**
  * All CTabItem / E4 model access lives here, so Eclipse upgrades that break it
@@ -75,6 +79,9 @@ final class TabPainter {
     private static final String PROJECT_RGB = "it.sco.tabcolors.projectRgb";
     /** RGB of the item's line. */
     private static final String LINE_COLOR = "it.sco.tabcolors.lineColor";
+    /** Instance preference keys: tab backgrounds of the last session, as #RRGGBB. */
+    private static final String TAB_BACKGROUND = "tabBackground";
+    private static final String SELECTION_BACKGROUND = "selectionBackground";
     /** Persisted-state key on editor MParts: name of the editor's project, "" for none. */
     private static final String PROJECT_KEY = "it.sco.tabcolors.project";
     /** Marks folders and part-list tables we already hooked. */
@@ -92,12 +99,18 @@ final class TabPainter {
     private static final AtomicBoolean repaintScheduled = new AtomicBoolean();
     private static final AtomicBoolean debugLogged = new AtomicBoolean();
 
-    /** See {@link #inputsRestored()}. UI thread only. */
+    /** Debug statistics, see {@link #profile()}. UI thread only. */
     private static int inputsRestored;
+    private static long profileLookup;
+    private static long profileResolve;
+    private static long profileApply;
     /** Tab of the editor that has focus: full-strength color. UI thread only. */
     private static CTabItem activeItem;
     /** Last seen editor tab background, used by the explorer decorator off the UI thread. */
     private static volatile RGB themeBackground;
+    /** Tab backgrounds last saved to the instance preferences (see {@link #warmUp}). */
+    private static volatile RGB savedBackground;
+    private static volatile RGB savedSelectionBackground;
 
     private TabPainter() {
     }
@@ -155,7 +168,9 @@ final class TabPainter {
     /** @return number of editor tabs found */
     static int repaintWindow(IWorkbenchWindow window) {
         try {
+            long start = System.nanoTime();
             Map<MPart, IEditorReference> parts = editorParts(window);
+            profileLookup += System.nanoTime() - start;
             parts.forEach((part, ref) -> {
                 try {
                     paint(part, ref);
@@ -183,11 +198,16 @@ final class TabPainter {
     }
 
     private static void paint(MPart part, IEditorReference ref) {
+        long start = System.nanoTime();
         CTabItem item = tabItem(part);
         if (item == null || item.isDisposed()) {
             return;
         }
-        apply(item, colorOf(part, ref));
+        RGB rgb = colorOf(part, ref);
+        long resolved = System.nanoTime();
+        apply(item, rgb);
+        profileResolve += resolved - start;
+        profileApply += System.nanoTime() - resolved;
     }
 
     private static RGB colorOf(MPart part, IEditorReference ref) {
@@ -228,9 +248,10 @@ final class TabPainter {
         return project;
     }
 
-    /** Number of unrestored editors whose input had to be restored (debug statistics). */
-    static int inputsRestored() {
-        return inputsRestored;
+    /** Debug statistics of startup painting, see {@link TabColorStartup}. */
+    static String profile() {
+        return String.format("model lookup %.1f, resolve %.1f, apply %.1f ms; %d inputs restored",
+                profileLookup / 1e6, profileResolve / 1e6, profileApply / 1e6, inputsRestored);
     }
 
     /** Marks the focused editor at startup, before any activation event. */
@@ -241,10 +262,80 @@ final class TabPainter {
     }
 
     /**
-     * Seeds {@link #themeBackground} before any tab has been painted: the workbench
-     * shell is styled by the CSS theme (the system list color is white even in dark).
+     * Background thread, at startup: takes the tab backgrounds of the last session and
+     * computes every color variant of every open project against them, so the UI thread
+     * only reads cached results, and the explorer decorator uses the right background
+     * from its first label on.
+     *
+     * @return number of color variants computed
+     */
+    static int warmUp(ProjectColorStore store) {
+        IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(ProjectColorStore.QUALIFIER);
+        RGB tab = ProjectColorStore.parse(prefs.get(TAB_BACKGROUND, null));
+        if (tab == null) {
+            return 0; // first run: nothing remembered yet
+        }
+        RGB selected = ProjectColorStore.parse(prefs.get(SELECTION_BACKGROUND, null));
+        if (selected == null) {
+            selected = tab;
+        }
+        savedBackground = tab;
+        savedSelectionBackground = selected;
+        if (themeBackground == null) {
+            themeBackground = tab;
+        }
+        int count = 0;
+        for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
+            RGB rgb = store.colorOf(project);
+            if (rgb == null) {
+                continue;
+            }
+            for (boolean focused : new boolean[] { true, false }) {
+                for (RGB background : new RGB[] { tab, selected }) {
+                    shade(rgb, background, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);
+                    shade(rgb, background, focused, ColorContrast.LINE, SOFT_LINE_FLOOR);
+                    count += 2;
+                }
+            }
+        }
+        return count;
+    }
+
+    /** Remembers the tab backgrounds for the next session's {@link #warmUp}; saved off the UI thread. */
+    private static void rememberBackgrounds(RGB background, RGB selectionBackground) {
+        if (background == null || (background.equals(savedBackground)
+                && Objects.equals(selectionBackground, savedSelectionBackground))) {
+            return;
+        }
+        savedBackground = background;
+        savedSelectionBackground = selectionBackground;
+        String tab = ProjectColorStore.toHex(background);
+        String selected = selectionBackground == null ? null : ProjectColorStore.toHex(selectionBackground);
+        Job job = Job.create("Save Project Tab Colors theme", monitor -> {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(ProjectColorStore.QUALIFIER);
+            prefs.put(TAB_BACKGROUND, tab);
+            if (selected != null) {
+                prefs.put(SELECTION_BACKGROUND, selected);
+            }
+            try {
+                prefs.flush();
+            } catch (BackingStoreException e) {
+                LOG.warn("Cannot save Project Tab Colors theme backgrounds: " + e.getMessage());
+            }
+        });
+        job.setSystem(true);
+        job.schedule();
+    }
+
+    /**
+     * Seeds {@link #themeBackground} before any tab has been painted, unless the last
+     * session's background was already loaded: the workbench shell is styled by the CSS
+     * theme (the system list color is white even in dark).
      */
     static void initThemeBackground(IWorkbench workbench) {
+        if (themeBackground != null) {
+            return;
+        }
         IWorkbenchWindow window = workbench.getActiveWorkbenchWindow();
         Color color = window != null && window.getShell() != null ? window.getShell().getBackground()
                 : workbench.getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND);
@@ -264,19 +355,28 @@ final class TabPainter {
         return themeBackground;
     }
 
-    /** Repaints tabs and explorer labels when the CSS theme changes. */
+    /**
+     * Repaints tabs and explorer labels when the CSS theme changes. Subscribing registers
+     * an OSGi event handler service, so it runs in a background job, off the UI thread
+     * during startup; no theme change can matter before the workbench is up anyway.
+     */
     static void subscribeThemeChanges(IWorkbench workbench) {
         IEventBroker broker = workbench.getService(IEventBroker.class);
         if (broker == null) {
             LOG.warn("No IEventBroker; tab colors are not reapplied on theme change");
             return;
         }
-        broker.subscribe(IThemeEngine.Events.THEME_CHANGED, event -> asyncExec(() -> {
-            // Tabs report the new background as they repaint; without tabs, use the shell.
-            if (repaintAll() == 0) {
-                initThemeBackground(workbench);
-            }
-        }));
+        Job job = Job.create("Project Tab Colors theme listener", monitor -> {
+            broker.subscribe(IThemeEngine.Events.THEME_CHANGED, event -> asyncExec(() -> {
+                // Tabs report the new background as they repaint; without tabs, use the shell.
+                if (repaintAll() == 0) {
+                    themeBackground = null;
+                    initThemeBackground(workbench);
+                }
+            }));
+        });
+        job.setSystem(true);
+        job.schedule();
     }
 
     private static void apply(CTabItem item, RGB rgb) {
@@ -297,6 +397,7 @@ final class TabPainter {
             selectionBackground = background;
         }
         setThemeBackground(background);
+        rememberBackgrounds(background, selectionBackground);
         boolean focused = item == activeItem;
         RGB text = shade(rgb, background, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);
         RGB selectedText = shade(rgb, selectionBackground, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);

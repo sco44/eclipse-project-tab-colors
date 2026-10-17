@@ -70,28 +70,31 @@ public class TabColorStartup implements IStartup {
     public void earlyStartup() {
         long start = System.nanoTime();
         int projects = 0;
+        int variants = 0;
         try {
-            projects = ProjectColorStore.get().prefetch();
             preloadClasses();
+            ProjectColorStore store = ProjectColorStore.get();
+            projects = store.prefetch();
+            variants = TabPainter.warmUp(store);
         } catch (RuntimeException | LinkageError e) {
             LOG.error("Project Tab Colors: background warm-up failed", e);
         }
         long warmed = System.nanoTime();
-        int projectCount = projects;
+        String warmUp = String.format("background warm-up %.1f ms (%d projects, %d colors)",
+                (warmed - start) / 1e6, projects, variants);
         IWorkbench workbench = PlatformUI.getWorkbench();
         Display display = workbench.getDisplay();
         display.asyncExec(() -> {
             long uiStart = System.nanoTime();
+            StringBuilder phases = new StringBuilder();
             int[] tabs = { 0 };
-            safely(() -> tabs[0] = hookWorkbench(workbench));
+            safely(() -> tabs[0] = hookWorkbench(workbench, phases));
             if (Platform.inDebugMode()) {
                 // Only the UI hookup blocks the workbench; the warm-up ran in the background
                 // and the wait in between is the UI thread finishing its own startup.
-                LOG.info(String.format("Project Tab Colors startup: UI thread %.1f ms for %d editor tabs"
-                        + " (%d unrestored inputs restored, rest from remembered projects);"
-                        + " background warm-up %.1f ms for %d projects; waited %.0f ms for the UI thread",
-                        (System.nanoTime() - uiStart) / 1e6, tabs[0], TabPainter.inputsRestored(),
-                        (warmed - start) / 1e6, projectCount, (uiStart - warmed) / 1e6));
+                LOG.info(String.format("Project Tab Colors startup: UI thread %.1f ms for %d editor tabs [%s; %s];"
+                        + " %s; waited %.0f ms for the UI thread", (System.nanoTime() - uiStart) / 1e6, tabs[0],
+                        phases, TabPainter.profile(), warmUp, (uiStart - warmed) / 1e6));
             }
         });
     }
@@ -100,7 +103,7 @@ public class TabColorStartup implements IStartup {
     private void preloadClasses() {
         ClassLoader loader = getClass().getClassLoader();
         for (String name : new String[] { "it.sco.tabcolors.TabPainter", "it.sco.tabcolors.ColorContrast",
-                "it.sco.tabcolors.EditorProjects" }) {
+                "it.sco.tabcolors.EditorProjects", "it.sco.tabcolors.ProjectColorDecorator" }) {
             try {
                 Class.forName(name, true, loader);
             } catch (ClassNotFoundException e) {
@@ -109,21 +112,35 @@ public class TabColorStartup implements IStartup {
         }
     }
 
-    /** @return number of editor tabs painted */
-    private int hookWorkbench(IWorkbench workbench) {
+    /**
+     * @param phases receives the time of each phase, for the debug log
+     * @return number of editor tabs painted
+     */
+    private int hookWorkbench(IWorkbench workbench, StringBuilder phases) {
+        long t = System.nanoTime();
         TabPainter.initThemeBackground(workbench);
         ProjectColorStore.get().addListener(project -> TabPainter.repaintAllLater());
         TabPainter.subscribeThemeChanges(workbench);
         workbench.addWindowListener(windowListener);
+        t = phase(phases, "setup", t);
         int tabs = 0;
         for (IWorkbenchWindow window : workbench.getWorkbenchWindows()) {
             tabs += hookWindow(window);
         }
+        t = phase(phases, "tabs", t);
         IWorkbenchWindow active = workbench.getActiveWorkbenchWindow();
         if (active != null) {
             TabPainter.initActive(active.getActivePage());
         }
+        phase(phases, "focus", t);
         return tabs;
+    }
+
+    private static long phase(StringBuilder phases, String name, long since) {
+        long now = System.nanoTime();
+        phases.append(phases.length() == 0 ? "" : ", ").append(name)
+                .append(String.format(" %.1f", (now - since) / 1e6));
+        return now;
     }
 
     private int hookWindow(IWorkbenchWindow window) {
