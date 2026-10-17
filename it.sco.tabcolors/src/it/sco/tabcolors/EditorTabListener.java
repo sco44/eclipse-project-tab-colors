@@ -22,13 +22,17 @@ final class EditorTabListener implements IPartListener2 {
 
     @Override
     public void partActivated(IWorkbenchPartReference ref) {
-        paint(ref);
+        if (ref instanceof IEditorReference editorRef) {
+            TabPainter.activatedLater(editorRef);
+        }
     }
 
-    /** The stack loses its active CSS class here; reapply in case styling reset the item. */
+    /** Also reapplies colors, in case CSS restyled the stack as it lost focus. */
     @Override
     public void partDeactivated(IWorkbenchPartReference ref) {
-        paint(ref);
+        if (ref instanceof IEditorReference editorRef) {
+            TabPainter.deactivatedLater(editorRef);
+        }
     }
 
     @Override

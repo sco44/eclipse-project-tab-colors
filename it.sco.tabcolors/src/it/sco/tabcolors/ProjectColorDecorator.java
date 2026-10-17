@@ -21,6 +21,8 @@ import org.eclipse.ui.PlatformUI;
  */
 public class ProjectColorDecorator extends BaseLabelProvider implements ILightweightLabelDecorator {
 
+    static final String ID = "it.sco.tabcolors.projectDecorator";
+
     private static final ILog LOG = Platform.getLog(ProjectColorDecorator.class);
 
     private final Consumer<IProject> storeListener = this::colorChanged;
@@ -39,7 +41,10 @@ public class ProjectColorDecorator extends BaseLabelProvider implements ILightwe
             }
             RGB rgb = ProjectColorStore.get().colorOf(project); // null if closed
             if (rgb != null) {
-                decoration.setForegroundColor(new Color(rgb));
+                // Decoration may run off the UI thread, so use the theme background
+                // last seen by TabPainter rather than the tree's own color.
+                RGB readable = ColorContrast.readable(rgb, TabPainter.themeBackground(), ColorContrast.TEXT);
+                decoration.setForegroundColor(new Color(readable));
             }
         } catch (RuntimeException e) {
             LOG.error("Cannot decorate " + element, e);

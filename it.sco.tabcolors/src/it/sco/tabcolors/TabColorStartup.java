@@ -74,12 +74,19 @@ public class TabColorStartup implements IStartup {
     }
 
     private void hookWorkbench(IWorkbench workbench) {
+        TabPainter.initThemeBackground(workbench.getDisplay());
         ProjectColorStore.get().addListener(project -> TabPainter.repaintAllLater());
         TabPainter.subscribeThemeChanges(workbench);
         workbench.addWindowListener(windowListener);
         for (IWorkbenchWindow window : workbench.getWorkbenchWindows()) {
             hookWindow(window);
         }
+        IWorkbenchWindow active = workbench.getActiveWorkbenchWindow();
+        if (active != null) {
+            TabPainter.initActive(active.getActivePage());
+        }
+        // Explorer labels may have been decorated before the theme background was known.
+        workbench.getDecoratorManager().update(ProjectColorDecorator.ID);
     }
 
     private void hookWindow(IWorkbenchWindow window) {
