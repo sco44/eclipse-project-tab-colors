@@ -65,6 +65,17 @@ class ProjectColorStoreTest {
     }
 
     @Test
+    void prefetchResolvesOpenProjectsOnly() throws Exception {
+        IProject closed = createProject("closed-" + System.nanoTime());
+        closed.close(null);
+        store.setColor(project, RED);
+
+        assertEquals(1, store.prefetch());
+        assertEquals(RED, store.colorOf(project));
+        assertNull(store.colorOf(closed));
+    }
+
+    @Test
     void nullAndMissingProjectsHaveNoColor() {
         assertNull(store.colorOf(null));
         assertNull(store.colorOf(workspace.getRoot().getProject("does-not-exist")));

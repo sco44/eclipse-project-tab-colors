@@ -1,5 +1,9 @@
 package it.sco.tabcolors;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+
 import org.eclipse.swt.graphics.RGB;
 
 /**
@@ -7,6 +11,10 @@ import org.eclipse.swt.graphics.RGB;
  * saturation, and moves only the HSL lightness (lighter on dark backgrounds,
  * darker on light ones) until the WCAG contrast ratio reaches a minimum.
  * The stored project color is never changed; this runs at paint time.
+ * <p>
+ * Results are memoized: there are only a few projects, themes and variants, and
+ * the explorer decorator and every tab repaint ask for the same colors again.
+ * Thread-safe.
  */
 final class ColorContrast {
 
@@ -14,6 +22,21 @@ final class ColorContrast {
     static final double TEXT = 4.5;
     /** WCAG 2 for non-text UI components (the tab line). */
     static final double LINE = 3.0;
+
+    /** sRGB channel (0-255) to linear light, so luminance needs no Math.pow at paint time. */
+    private static final double[] LINEAR = new double[256];
+    private static final int CACHE_LIMIT = 4096;
+    private static final Map<Key, RGB> CACHE = new ConcurrentHashMap<>();
+
+    static {
+        for (int i = 0; i < 256; i++) {
+            double v = i / 255.0;
+            LINEAR[i] = v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        }
+    }
+
+    private record Key(RGB color, RGB background, double minContrast, double fraction, double floor) {
+    }
 
     private ColorContrast() {
     }
@@ -24,7 +47,15 @@ final class ColorContrast {
      * {@code color} unchanged if it already qualifies or the background is unknown.
      */
     static RGB readable(RGB color, RGB background, double minContrast) {
-        if (color == null || background == null || contrast(color, background) >= minContrast) {
+        if (color == null || background == null) {
+            return color;
+        }
+        return cached(new Key(color, background, minContrast, -1, -1),
+                () -> computeReadable(color, background, minContrast));
+    }
+
+    private static RGB computeReadable(RGB color, RGB background, double minContrast) {
+        if (contrast(color, background) >= minContrast) {
             return color;
         }
         float[] hsl = toHsl(color);
@@ -55,10 +86,15 @@ final class ColorContrast {
      * but never below {@code floor} contrast.
      */
     static RGB soften(RGB color, RGB background, double minContrast, double fraction, double floor) {
-        RGB base = readable(color, background, minContrast);
-        if (base == null || background == null) {
-            return base;
+        if (color == null || background == null) {
+            return color;
         }
+        return cached(new Key(color, background, minContrast, fraction, floor),
+                () -> computeSoften(color, background, minContrast, fraction, floor));
+    }
+
+    private static RGB computeSoften(RGB color, RGB background, double minContrast, double fraction, double floor) {
+        RGB base = readable(color, background, minContrast);
         RGB blended = mix(base, background, fraction);
         if (contrast(blended, background) >= floor) {
             return blended;
@@ -75,6 +111,18 @@ final class ColorContrast {
             }
         }
         return mix(base, background, ok);
+    }
+
+    private static RGB cached(Key key, Supplier<RGB> compute) {
+        RGB result = CACHE.get(key);
+        if (result == null) {
+            if (CACHE.size() >= CACHE_LIMIT) {
+                CACHE.clear(); // only reached with pathological theme churn
+            }
+            result = compute.get();
+            CACHE.put(key, result);
+        }
+        return result;
     }
 
     /** Linear blend from {@code a} (t = 0) to {@code b} (t = 1). */
@@ -97,8 +145,7 @@ final class ColorContrast {
     }
 
     private static double linear(int channel) {
-        double v = channel / 255.0;
-        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        return LINEAR[channel];
     }
 
     /** {hue 0-360, saturation 0-1, lightness 0-1}. */

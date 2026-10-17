@@ -60,46 +60,75 @@ public class TabColorStartup implements IStartup {
         }
     };
 
+    /**
+     * Runs on a background thread while the UI thread is still busy starting the
+     * workbench (typically for a second or more). Everything that does not need the
+     * UI thread happens here: reading every project's color from disk and loading our
+     * classes. The UI thread then only hooks listeners and paints from warm caches.
+     */
     @Override
     public void earlyStartup() {
         long start = System.nanoTime();
+        int projects = 0;
+        try {
+            projects = ProjectColorStore.get().prefetch();
+            preloadClasses();
+        } catch (RuntimeException | LinkageError e) {
+            LOG.error("Project Tab Colors: background warm-up failed", e);
+        }
+        long warmed = System.nanoTime();
+        int projectCount = projects;
         IWorkbench workbench = PlatformUI.getWorkbench();
         Display display = workbench.getDisplay();
-        long scheduled = System.nanoTime();
         display.asyncExec(() -> {
             long uiStart = System.nanoTime();
-            safely(() -> hookWorkbench(workbench));
+            int[] tabs = { 0 };
+            safely(() -> tabs[0] = hookWorkbench(workbench));
             if (Platform.inDebugMode()) {
-                // Our cost is earlyStartup's own work plus the UI hookup; the time in
-                // between is the UI thread finishing workbench startup, not ours.
-                LOG.info(String.format("Project Tab Colors startup cost: %.1f ms (earlyStartup %.1f ms"
-                        + " + UI hookup %.1f ms); waited %.0f ms for the UI thread",
-                        (scheduled - start + System.nanoTime() - uiStart) / 1e6, (scheduled - start) / 1e6,
-                        (System.nanoTime() - uiStart) / 1e6, (uiStart - scheduled) / 1e6));
+                // Only the UI hookup blocks the workbench; the warm-up ran in the background
+                // and the wait in between is the UI thread finishing its own startup.
+                LOG.info(String.format("Project Tab Colors startup: UI thread %.1f ms for %d editor tabs;"
+                        + " background warm-up %.1f ms for %d projects; waited %.0f ms for the UI thread",
+                        (System.nanoTime() - uiStart) / 1e6, tabs[0], (warmed - start) / 1e6, projectCount,
+                        (uiStart - warmed) / 1e6));
             }
         });
     }
 
-    private void hookWorkbench(IWorkbench workbench) {
-        TabPainter.initThemeBackground(workbench.getDisplay());
+    /** Loads and initializes the classes the UI thread needs, so it does not pay for class loading. */
+    private void preloadClasses() {
+        ClassLoader loader = getClass().getClassLoader();
+        for (String name : new String[] { "it.sco.tabcolors.TabPainter", "it.sco.tabcolors.ColorContrast",
+                "it.sco.tabcolors.EditorProjects" }) {
+            try {
+                Class.forName(name, true, loader);
+            } catch (ClassNotFoundException e) {
+                LOG.error("Project Tab Colors: cannot preload " + name, e);
+            }
+        }
+    }
+
+    /** @return number of editor tabs painted */
+    private int hookWorkbench(IWorkbench workbench) {
+        TabPainter.initThemeBackground(workbench);
         ProjectColorStore.get().addListener(project -> TabPainter.repaintAllLater());
         TabPainter.subscribeThemeChanges(workbench);
         workbench.addWindowListener(windowListener);
+        int tabs = 0;
         for (IWorkbenchWindow window : workbench.getWorkbenchWindows()) {
-            hookWindow(window);
+            tabs += hookWindow(window);
         }
         IWorkbenchWindow active = workbench.getActiveWorkbenchWindow();
         if (active != null) {
             TabPainter.initActive(active.getActivePage());
         }
-        // Explorer labels may have been decorated before the theme background was known.
-        workbench.getDecoratorManager().update(ProjectColorDecorator.ID);
+        return tabs;
     }
 
-    private void hookWindow(IWorkbenchWindow window) {
+    private int hookWindow(IWorkbenchWindow window) {
         window.getPartService().addPartListener(partListener);
         window.addPageListener(pageListener);
-        TabPainter.repaintWindow(window);
+        return TabPainter.repaintWindow(window);
     }
 
     private static void safely(Runnable runnable) {

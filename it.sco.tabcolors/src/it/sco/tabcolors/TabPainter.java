@@ -135,26 +135,33 @@ final class TabPainter {
 
     // ---- painting -----------------------------------------------------------------
 
-    static void repaintAll() {
+    /** @return number of editor tabs found */
+    static int repaintAll() {
         if (!PlatformUI.isWorkbenchRunning()) {
-            return;
+            return 0;
         }
+        int count = 0;
         for (IWorkbenchWindow window : PlatformUI.getWorkbench().getWorkbenchWindows()) {
-            repaintWindow(window);
+            count += repaintWindow(window);
         }
+        return count;
     }
 
-    static void repaintWindow(IWorkbenchWindow window) {
+    /** @return number of editor tabs found */
+    static int repaintWindow(IWorkbenchWindow window) {
         try {
-            editorParts(window).forEach((part, ref) -> {
+            Map<MPart, IEditorReference> parts = editorParts(window);
+            parts.forEach((part, ref) -> {
                 try {
                     paint(part, ref);
                 } catch (RuntimeException e) {
                     LOG.error("Cannot color editor tab " + ref.getId(), e);
                 }
             });
+            return parts.size();
         } catch (RuntimeException e) {
             LOG.error("Cannot color editor tabs", e);
+            return 0;
         }
     }
 
@@ -190,10 +197,22 @@ final class TabPainter {
         }
     }
 
-    /** Seeds {@link #themeBackground} before any tab has been painted. */
-    static void initThemeBackground(Display display) {
-        if (themeBackground == null) {
-            themeBackground = display.getSystemColor(SWT.COLOR_LIST_BACKGROUND).getRGB();
+    /**
+     * Seeds {@link #themeBackground} before any tab has been painted: the workbench
+     * shell is styled by the CSS theme (the system list color is white even in dark).
+     */
+    static void initThemeBackground(IWorkbench workbench) {
+        IWorkbenchWindow window = workbench.getActiveWorkbenchWindow();
+        Color color = window != null && window.getShell() != null ? window.getShell().getBackground()
+                : workbench.getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND);
+        setThemeBackground(rgbOf(color));
+    }
+
+    /** Records the theme background; the explorer decorator refreshes its labels if it changed. */
+    private static void setThemeBackground(RGB background) {
+        if (background != null && !background.equals(themeBackground)) {
+            themeBackground = background;
+            ProjectColorDecorator.backgroundChanged(background);
         }
     }
 
@@ -210,8 +229,10 @@ final class TabPainter {
             return;
         }
         broker.subscribe(IThemeEngine.Events.THEME_CHANGED, event -> asyncExec(() -> {
-            repaintAll(); // also refreshes themeBackground
-            workbench.getDecoratorManager().update(ProjectColorDecorator.ID);
+            // Tabs report the new background as they repaint; without tabs, use the shell.
+            if (repaintAll() == 0) {
+                initThemeBackground(workbench);
+            }
         }));
     }
 
@@ -232,9 +253,7 @@ final class TabPainter {
         if (selectionBackground == null) {
             selectionBackground = background;
         }
-        if (background != null) {
-            themeBackground = background;
-        }
+        setThemeBackground(background);
         boolean focused = item == activeItem;
         RGB text = shade(rgb, background, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);
         RGB selectedText = shade(rgb, selectionBackground, focused, ColorContrast.TEXT, SOFT_TEXT_FLOOR);

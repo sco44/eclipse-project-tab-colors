@@ -108,6 +108,22 @@ public final class ProjectColorStore {
         return rgb;
     }
 
+    /**
+     * Resolves and caches the colors of all open projects, so later {@link #colorOf}
+     * calls (on the UI thread) never touch the disk. Meant for a background thread.
+     *
+     * @return number of projects resolved
+     */
+    public int prefetch() {
+        int count = 0;
+        for (IProject project : workspace.getRoot().getProjects()) {
+            if (colorOf(project) != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     /** Whether the project is open and has a valid {@code color} value in its prefs. */
     public boolean hasExplicitColor(IProject project) {
         return project != null && project.isOpen() && readExplicit(project) != null;
