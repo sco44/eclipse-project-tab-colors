@@ -87,10 +87,11 @@ public class TabColorStartup implements IStartup {
             if (Platform.inDebugMode()) {
                 // Only the UI hookup blocks the workbench; the warm-up ran in the background
                 // and the wait in between is the UI thread finishing its own startup.
-                LOG.info(String.format("Project Tab Colors startup: UI thread %.1f ms for %d editor tabs;"
+                LOG.info(String.format("Project Tab Colors startup: UI thread %.1f ms for %d editor tabs"
+                        + " (%d unrestored inputs restored, rest from remembered projects);"
                         + " background warm-up %.1f ms for %d projects; waited %.0f ms for the UI thread",
-                        (System.nanoTime() - uiStart) / 1e6, tabs[0], (warmed - start) / 1e6, projectCount,
-                        (uiStart - warmed) / 1e6));
+                        (System.nanoTime() - uiStart) / 1e6, tabs[0], TabPainter.inputsRestored(),
+                        (warmed - start) / 1e6, projectCount, (uiStart - warmed) / 1e6));
             }
         });
     }

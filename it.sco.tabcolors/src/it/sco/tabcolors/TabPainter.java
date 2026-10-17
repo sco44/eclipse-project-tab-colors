@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.e4.core.services.events.IEventBroker;
@@ -74,6 +75,8 @@ final class TabPainter {
     private static final String PROJECT_RGB = "it.sco.tabcolors.projectRgb";
     /** RGB of the item's line. */
     private static final String LINE_COLOR = "it.sco.tabcolors.lineColor";
+    /** Persisted-state key on editor MParts: name of the editor's project, "" for none. */
+    private static final String PROJECT_KEY = "it.sco.tabcolors.project";
     /** Marks folders and part-list tables we already hooked. */
     private static final String HOOKED = "it.sco.tabcolors.hooked";
 
@@ -89,6 +92,8 @@ final class TabPainter {
     private static final AtomicBoolean repaintScheduled = new AtomicBoolean();
     private static final AtomicBoolean debugLogged = new AtomicBoolean();
 
+    /** See {@link #inputsRestored()}. UI thread only. */
+    private static int inputsRestored;
     /** Tab of the editor that has focus: full-strength color. UI thread only. */
     private static CTabItem activeItem;
     /** Last seen editor tab background, used by the explorer decorator off the UI thread. */
@@ -182,12 +187,50 @@ final class TabPainter {
         if (item == null || item.isDisposed()) {
             return;
         }
-        apply(item, colorOf(ref));
+        apply(item, colorOf(part, ref));
     }
 
-    private static RGB colorOf(IEditorReference ref) {
-        IProject project = EditorProjects.projectOf(ref);
+    private static RGB colorOf(MPart part, IEditorReference ref) {
+        IProject project = projectOf(part, ref);
         return project == null ? null : ProjectColorStore.get().colorOf(project);
+    }
+
+    /**
+     * The editor's project, without restoring an unrestored editor whenever possible.
+     * <p>
+     * Restoring an unrestored editor's input runs its editor plug-in's element factory
+     * (often loading that plug-in), which is exactly what lazy editor restore avoids and
+     * costs milliseconds per tab. So the project name is remembered in the part's
+     * persisted state, which the workbench saves with the tab in workbench.xmi: it lives
+     * and dies with the tab, needs no separate file, and is rewritten from the real input
+     * whenever the editor is restored. A remembered project that no longer exists falls
+     * back to restoring the input once.
+     */
+    private static IProject projectOf(MPart part, IEditorReference ref) {
+        if (ref.getEditor(false) == null) {
+            String remembered = part.getPersistedState().get(PROJECT_KEY);
+            if (remembered != null) {
+                if (remembered.isEmpty()) {
+                    return null; // remembered: no project (external file, compare editor, ...)
+                }
+                IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(remembered);
+                if (project.exists()) {
+                    return project;
+                }
+            }
+            inputsRestored++;
+        }
+        IProject project = EditorProjects.projectOf(ref);
+        String name = project == null ? "" : project.getName();
+        if (!name.equals(part.getPersistedState().get(PROJECT_KEY))) {
+            part.getPersistedState().put(PROJECT_KEY, name);
+        }
+        return project;
+    }
+
+    /** Number of unrestored editors whose input had to be restored (debug statistics). */
+    static int inputsRestored() {
+        return inputsRestored;
     }
 
     /** Marks the focused editor at startup, before any activation event. */
@@ -387,9 +430,10 @@ final class TabPainter {
         }
         RGB background = rgbOf(table.getBackground());
         for (TableItem row : table.getItems()) {
-            IEditorReference ref = row.getData() instanceof MPart part ? refs.get(part) : null;
+            MPart part = row.getData() instanceof MPart p ? p : null;
+            IEditorReference ref = part == null ? null : refs.get(part);
             if (ref != null) {
-                RGB rgb = colorOf(ref);
+                RGB rgb = colorOf(part, ref);
                 if (rgb != null) {
                     row.setForeground(new Color(ColorContrast.readable(rgb, background, ColorContrast.TEXT)));
                 }
