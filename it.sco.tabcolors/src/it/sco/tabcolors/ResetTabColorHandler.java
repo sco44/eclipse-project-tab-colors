@@ -19,13 +19,13 @@ public class ResetTabColorHandler extends AbstractHandler {
 
     @Override
     public void setEnabled(Object evaluationContext) {
-        IProject project = EditorProjects.selectedProject(evaluationContext);
+        IProject project = EditorProjects.targetProject(evaluationContext);
         setBaseEnabled(ProjectColorStore.get().hasExplicitColor(project));
     }
 
     @Override
     public Object execute(ExecutionEvent event) {
-        IProject project = EditorProjects.projectOf(HandlerUtil.getCurrentSelection(event));
+        IProject project = EditorProjects.targetProject(event.getApplicationContext());
         ProjectColorStore store = ProjectColorStore.get();
         if (!store.hasExplicitColor(project)) {
             return null;

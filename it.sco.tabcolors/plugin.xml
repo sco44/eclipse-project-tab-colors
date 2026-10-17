@@ -63,6 +63,9 @@
     <menuContribution locationURI="toolbar:org.eclipse.ui.trim.status">
       <toolbar id="it.sco.tabcolors.statusToolbar">
         <control id="it.sco.tabcolors.activeProject" class="it.sco.tabcolors.ActiveProjectStatusControl"/>
+        <!-- Also sets the row height: on Windows a toolbar holding only a control is ~7 px tall. -->
+        <command commandId="it.sco.tabcolors.setColor" icon="icons/palette.png"
+                 tooltip="Change the tab color of this project" style="push"/>
       </toolbar>
     </menuContribution>
   </extension>

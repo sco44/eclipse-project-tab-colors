@@ -13,7 +13,8 @@ import org.eclipse.ui.handlers.HandlerUtil;
 import org.osgi.service.prefs.BackingStoreException;
 
 /**
- * F2: picks a color for the selected resource's project. The store event drives
+ * F2: picks a color for the target project: the selected resource's project from the
+ * explorer menu, the active editor's project from the status bar button. The store event drives
  * the repaint of tabs, explorer labels and status bar; this handler never paints.
  */
 public class SetTabColorHandler extends AbstractHandler {
@@ -22,13 +23,13 @@ public class SetTabColorHandler extends AbstractHandler {
 
     @Override
     public void setEnabled(Object evaluationContext) {
-        IProject project = EditorProjects.selectedProject(evaluationContext);
+        IProject project = EditorProjects.targetProject(evaluationContext);
         setBaseEnabled(project != null && project.isOpen());
     }
 
     @Override
     public Object execute(ExecutionEvent event) {
-        IProject project = EditorProjects.projectOf(HandlerUtil.getCurrentSelection(event));
+        IProject project = EditorProjects.targetProject(event.getApplicationContext());
         if (project == null || !project.isOpen()) {
             return null;
         }
