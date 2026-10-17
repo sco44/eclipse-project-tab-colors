@@ -70,6 +70,24 @@ public final class EditorProjects {
         return selection instanceof ISelection s ? projectOf(s) : null;
     }
 
+    /**
+     * Target of the F5 commands in a handler evaluation context: the active editor's
+     * project when an editor has focus, else the selected resource's project (explorer
+     * menu), else the active editor's project. {@code null} if none.
+     */
+    public static IProject targetProject(Object evaluationContext) {
+        Object part = HandlerUtil.getVariable(evaluationContext, ISources.ACTIVE_PART_NAME);
+        if (part instanceof IEditorPart editor) {
+            return projectOf(editor);
+        }
+        IProject selected = selectedProject(evaluationContext);
+        if (selected != null) {
+            return selected;
+        }
+        Object editor = HandlerUtil.getVariable(evaluationContext, ISources.ACTIVE_EDITOR_NAME);
+        return editor instanceof IEditorPart e ? projectOf(e) : null;
+    }
+
     /** Project of an editor input, or {@code null}. */
     public static IProject projectOf(IEditorInput input) {
         if (input == null) {

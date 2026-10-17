@@ -9,11 +9,15 @@
     <category id="it.sco.tabcolors.category" name="Project Tab Colors"/>
     <command id="it.sco.tabcolors.setColor" categoryId="it.sco.tabcolors.category" name="Tab Color..."/>
     <command id="it.sco.tabcolors.resetColor" categoryId="it.sco.tabcolors.category" name="Reset Tab Color"/>
+    <command id="it.sco.tabcolors.closeProjectEditors" categoryId="it.sco.tabcolors.category" name="Close Editors of This Project"/>
+    <command id="it.sco.tabcolors.closeOtherProjectsEditors" categoryId="it.sco.tabcolors.category" name="Close Editors of Other Projects"/>
   </extension>
 
   <extension point="org.eclipse.ui.handlers">
     <handler commandId="it.sco.tabcolors.setColor" class="it.sco.tabcolors.SetTabColorHandler"/>
     <handler commandId="it.sco.tabcolors.resetColor" class="it.sco.tabcolors.ResetTabColorHandler"/>
+    <handler commandId="it.sco.tabcolors.closeProjectEditors" class="it.sco.tabcolors.CloseProjectEditorsHandler"/>
+    <handler commandId="it.sco.tabcolors.closeOtherProjectsEditors" class="it.sco.tabcolors.CloseOtherProjectsEditorsHandler"/>
   </extension>
 
   <extension point="org.eclipse.ui.menus">
@@ -22,6 +26,9 @@
       <menu id="it.sco.tabcolors.menu.projectExplorer" label="Project Tab Colors">
         <command commandId="it.sco.tabcolors.setColor"/>
         <command commandId="it.sco.tabcolors.resetColor"/>
+        <separator name="close" visible="true"/>
+        <command commandId="it.sco.tabcolors.closeProjectEditors"/>
+        <command commandId="it.sco.tabcolors.closeOtherProjectsEditors"/>
         <visibleWhen checkEnabled="false">
           <with variable="selection">
             <count value="1"/>
@@ -35,6 +42,9 @@
       <menu id="it.sco.tabcolors.menu.packageExplorer" label="Project Tab Colors">
         <command commandId="it.sco.tabcolors.setColor"/>
         <command commandId="it.sco.tabcolors.resetColor"/>
+        <separator name="close" visible="true"/>
+        <command commandId="it.sco.tabcolors.closeProjectEditors"/>
+        <command commandId="it.sco.tabcolors.closeOtherProjectsEditors"/>
         <visibleWhen checkEnabled="false">
           <with variable="selection">
             <count value="1"/>
@@ -43,6 +53,21 @@
         </visibleWhen>
       </menu>
     </menuContribution>
+    <!-- F5 in the Navigate menu; enabled when a target project exists -->
+    <menuContribution locationURI="menu:navigate?after=additions">
+      <separator name="it.sco.tabcolors.navigate" visible="true"/>
+      <command commandId="it.sco.tabcolors.closeProjectEditors"/>
+      <command commandId="it.sco.tabcolors.closeOtherProjectsEditors"/>
+    </menuContribution>
+  </extension>
+
+  <!-- F5 keys. Checked against the 2025-06 install: no conflicts on Windows/Linux
+       (M1+M3+W is only bound for the retired macOS carbon platform). -->
+  <extension point="org.eclipse.ui.bindings">
+    <key commandId="it.sco.tabcolors.closeProjectEditors" sequence="M1+M3+W"
+         contextId="org.eclipse.ui.contexts.window" schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
+    <key commandId="it.sco.tabcolors.closeOtherProjectsEditors" sequence="M1+M2+M3+W"
+         contextId="org.eclipse.ui.contexts.window" schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
   </extension>
 
   <extension point="org.eclipse.ui.decorators">
